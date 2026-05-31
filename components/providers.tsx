@@ -12,14 +12,14 @@ interface ThemeContextType {
   resolvedTheme: 'light' | 'dark';
 }
 
-const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
+const ThemeContext = createContext<ThemeContextType>({
+  theme: 'dark',
+  setTheme: () => {},
+  resolvedTheme: 'dark',
+});
 
 export function useTheme() {
-  const context = useContext(ThemeContext);
-  if (!context) {
-    throw new Error('useTheme must be used within a ThemeProvider');
-  }
-  return context;
+  return useContext(ThemeContext);
 }
 
 // Language Context
@@ -29,14 +29,14 @@ interface LanguageContextType {
   t: (key: TranslationKey) => string;
 }
 
-const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
+const LanguageContext = createContext<LanguageContextType>({
+  language: 'de',
+  setLanguage: () => {},
+  t: (key: TranslationKey) => key,
+});
 
 export function useLanguage() {
-  const context = useContext(LanguageContext);
-  if (!context) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
-  }
-  return context;
+  return useContext(LanguageContext);
 }
 
 // Combined Provider
@@ -45,37 +45,30 @@ interface ProvidersProps {
 }
 
 export function Providers({ children }: ProvidersProps) {
-  const [theme, setThemeState] = useState<Theme>('system');
+  const [theme, setThemeState] = useState<Theme>('dark');
   const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('dark');
   const [language, setLanguageState] = useState<Language>('de');
   const [mounted, setMounted] = useState(false);
 
-  // Initialize theme from localStorage or system preference
   useEffect(() => {
     setMounted(true);
-    
+
     // Theme initialization
     const savedTheme = localStorage.getItem('theme') as Theme | null;
     if (savedTheme && ['light', 'dark', 'system'].includes(savedTheme)) {
       setThemeState(savedTheme);
     }
 
-    // Language initialization - check localStorage first, then browser language
+    // Language initialization
     const savedLanguage = localStorage.getItem('language') as Language | null;
     if (savedLanguage && ['de', 'en'].includes(savedLanguage)) {
       setLanguageState(savedLanguage);
     } else {
-      // Detect browser language
       const browserLang = navigator.language.toLowerCase();
-      if (browserLang.startsWith('de')) {
-        setLanguageState('de');
-      } else {
-        setLanguageState('en');
-      }
+      setLanguageState(browserLang.startsWith('de') ? 'de' : 'en');
     }
   }, []);
 
-  // Update resolved theme based on theme setting and system preference
   useEffect(() => {
     if (!mounted) return;
 
@@ -90,22 +83,16 @@ export function Providers({ children }: ProvidersProps) {
 
     updateResolvedTheme();
 
-    // Listen for system theme changes
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handleChange = () => {
-      if (theme === 'system') {
-        updateResolvedTheme();
-      }
+      if (theme === 'system') updateResolvedTheme();
     };
-
     mediaQuery.addEventListener('change', handleChange);
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, [theme, mounted]);
 
-  // Apply theme class to document
   useEffect(() => {
     if (!mounted) return;
-    
     const root = document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(resolvedTheme);
@@ -113,27 +100,22 @@ export function Providers({ children }: ProvidersProps) {
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    localStorage.setItem('theme', newTheme);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('theme', newTheme);
+    }
   };
 
   const setLanguage = (newLang: Language) => {
     setLanguageState(newLang);
-    localStorage.setItem('language', newLang);
-    document.documentElement.lang = newLang;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('language', newLang);
+      document.documentElement.lang = newLang;
+    }
   };
 
   const t = (key: TranslationKey): string => {
     return translations[language][key] || translations.de[key] || key;
   };
-
-  // Prevent hydration mismatch by not rendering until mounted
-  if (!mounted) {
-    return (
-      <div className="min-h-screen bg-background">
-        {children}
-      </div>
-    );
-  }
 
   return (
     <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>
